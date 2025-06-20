@@ -67,6 +67,18 @@ pub enum AgentError {
     /// Generic internal error
     #[error("Internal error: {0}")]
     Internal(String),
+
+    /// Model error
+    #[error("Model error: {0}")]
+    ModelError(String),
+
+    /// Invalid request
+    #[error("Invalid request: {0}")]
+    InvalidRequest(String),
+
+    /// IO error
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 impl AgentError {

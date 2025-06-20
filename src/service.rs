@@ -4,17 +4,13 @@
 //! handling NATS connections, message processing, and lifecycle management.
 
 use crate::agent::AlchemistAgent;
+use crate::config::Config;
 use crate::error::{AgentError, Result};
-use crate::nats_integration::{
-    NatsClient, process_command_stream, process_query_stream, handle_health_checks,
-    HealthResponse, DialogMessage,
-};
-use futures::StreamExt;
+use crate::model::{ModelProvider, OllamaProvider};
+use crate::nats_integration::NatsClient;
 use std::sync::Arc;
-use std::pin::Pin;
-use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 /// Status of the agent service
 #[derive(Debug, Clone, PartialEq)]
@@ -35,251 +31,162 @@ pub enum ServiceStatus {
     Error(String),
 }
 
-/// The main agent service
+/// The main agent service that orchestrates all components
 #[derive(Clone)]
 pub struct AgentService {
-    /// The Alchemist agent
+    config: Config,
     agent: Arc<AlchemistAgent>,
-    
-    /// NATS client
     nats_client: Arc<NatsClient>,
-    
-    /// Service status
-    status: Arc<RwLock<ServiceStatus>>,
-    
-    /// Active task handles
-    tasks: Arc<RwLock<Vec<JoinHandle<()>>>>,
-    
-    /// Service start time
-    start_time: std::time::Instant,
+    tasks: Arc<tokio::sync::Mutex<Vec<JoinHandle<()>>>>,
 }
 
 impl AgentService {
     /// Create a new agent service
-    pub async fn new(
-        config: crate::config::AgentConfig,
-    ) -> Result<Self> {
-        info!("Starting Alchemist agent service v{}", crate::VERSION);
+    pub async fn new(config: Config) -> Result<Self> {
+        // Create model provider based on configuration
+        let model_provider = Self::create_model_provider(&config)?;
         
-        // Create model provider
-        let model_provider = crate::model::create_provider(&config.model)?;
-        
-        // Create agent
-        let agent = AlchemistAgent::new(config.clone(), model_provider).await?;
+        // Create the Alchemist agent
+        let agent = Arc::new(
+            AlchemistAgent::new(config.agent.clone(), model_provider).await?
+        );
         
         // Create NATS client
-        let nats_client = NatsClient::new(&config.nats).await?;
+        let nats_client = Arc::new(NatsClient::new(config.nats.clone()).await?);
         
         Ok(Self {
-            agent: Arc::new(agent),
-            nats_client: Arc::new(nats_client),
-            status: Arc::new(RwLock::new(ServiceStatus::Starting)),
-            tasks: Arc::new(RwLock::new(Vec::new())),
-            start_time: std::time::Instant::now(),
+            config,
+            agent,
+            nats_client,
+            tasks: Arc::new(tokio::sync::Mutex::new(Vec::new())),
         })
     }
     
     /// Start the agent service
     pub async fn start(&self) -> Result<()> {
-        info!("Starting agent service tasks");
+        info!("Starting Alchemist agent service");
         
-        // Update status
-        *self.status.write().await = ServiceStatus::Running;
+        // Start NATS subscriptions
+        self.start_nats_subscriptions().await?;
         
-        // Start command processor
-        let command_task = self.start_command_processor();
+        // Start health check task
+        self.start_health_check().await?;
         
-        // Start query processor
-        let query_task = self.start_query_processor();
-        
-        // Start dialog processor
-        let dialog_task = self.start_dialog_processor();
-        
-        // Start health check handler
-        let health_task = self.start_health_handler();
-        
-        // Store task handles
-        let mut tasks = self.tasks.write().await;
-        tasks.push(command_task);
-        tasks.push(query_task);
-        tasks.push(dialog_task);
-        tasks.push(health_task);
-        
-        info!("Agent service started successfully");
-        
+        info!("Alchemist agent service started successfully");
         Ok(())
     }
     
     /// Stop the agent service
     pub async fn stop(&self) -> Result<()> {
-        info!("Stopping agent service");
-        
-        // Update status
-        *self.status.write().await = ServiceStatus::Stopping;
-        
-        // Close NATS subscriptions
-        self.nats_client.close().await?;
+        info!("Stopping Alchemist agent service");
         
         // Cancel all tasks
-        let mut tasks = self.tasks.write().await;
+        let mut tasks = self.tasks.lock().await;
         for task in tasks.drain(..) {
             task.abort();
         }
         
-        // Update status
-        *self.status.write().await = ServiceStatus::Stopped;
-        
-        info!("Agent service stopped");
-        
+        info!("Alchemist agent service stopped");
         Ok(())
     }
     
-    /// Get current service status
-    pub async fn status(&self) -> ServiceStatus {
-        self.status.read().await.clone()
-    }
-    
-    /// Wait for service to complete
-    pub async fn wait(&self) -> Result<()> {
-        let tasks = self.tasks.read().await.clone();
-        
-        for task in tasks {
-            if let Err(e) = task.await {
-                if !e.is_cancelled() {
-                    error!("Task failed: {}", e);
-                }
+    /// Create model provider based on configuration
+    fn create_model_provider(config: &Config) -> Result<Box<dyn ModelProvider>> {
+        match &config.model_provider {
+            crate::config::ModelProviderConfig::Ollama { ollama } => {
+                Ok(Box::new(OllamaProvider::new(
+                    ollama.base_url.clone(),
+                    ollama.model.clone(),
+                    ollama.options.clone(),
+                )))
+            }
+            crate::config::ModelProviderConfig::OpenAI { .. } => {
+                Err(AgentError::Configuration(
+                    "OpenAI provider not yet implemented".to_string()
+                ))
+            }
+            crate::config::ModelProviderConfig::Anthropic { .. } => {
+                Err(AgentError::Configuration(
+                    "Anthropic provider not yet implemented".to_string()
+                ))
             }
         }
+    }
+    
+    /// Start NATS subscriptions
+    async fn start_nats_subscriptions(&self) -> Result<()> {
+        let nats_client = self.nats_client.clone();
+        let agent = self.agent.clone();
+        
+        // Start command subscription
+        let cmd_task = tokio::spawn(async move {
+            if let Err(e) = nats_client.subscribe_commands(agent.clone()).await {
+                error!("Command subscription error: {}", e);
+            }
+        });
+        
+        let nats_client = self.nats_client.clone();
+        let agent = self.agent.clone();
+        
+        // Start query subscription
+        let query_task = tokio::spawn(async move {
+            if let Err(e) = nats_client.subscribe_queries(agent.clone()).await {
+                error!("Query subscription error: {}", e);
+            }
+        });
+        
+        let nats_client = self.nats_client.clone();
+        let agent = self.agent.clone();
+        
+        // Start dialog subscription
+        let dialog_task = tokio::spawn(async move {
+            if let Err(e) = nats_client.subscribe_dialogs(agent.clone()).await {
+                error!("Dialog subscription error: {}", e);
+            }
+        });
+        
+        // Store tasks
+        let mut tasks = self.tasks.lock().await;
+        tasks.push(cmd_task);
+        tasks.push(query_task);
+        tasks.push(dialog_task);
         
         Ok(())
     }
     
-    /// Start command processor task
-    fn start_command_processor(&self) -> JoinHandle<()> {
-        let agent = self.agent.clone();
+    /// Start health check task
+    async fn start_health_check(&self) -> Result<()> {
         let nats_client = self.nats_client.clone();
-        let status = self.status.clone();
+        let interval = self.config.service.health_check_interval;
         
-        tokio::spawn(async move {
-            if let Err(e) = process_command_stream(&nats_client, move |command| {
-                let agent = agent.clone();
-                Box::pin(async move {
-                    agent.process_command(command).await
-                })
-            }).await {
-                error!("Command processor error: {}", e);
-                *status.write().await = ServiceStatus::Error(e.to_string());
-            }
-        })
-    }
-    
-    /// Start query processor task
-    fn start_query_processor(&self) -> JoinHandle<()> {
-        let agent = self.agent.clone();
-        let nats_client = self.nats_client.clone();
-        let status = self.status.clone();
-        
-        tokio::spawn(async move {
-            if let Err(e) = process_query_stream(&nats_client, move |query| {
-                let agent = agent.clone();
-                Box::pin(async move {
-                    agent.process_query(query).await
-                })
-            }).await {
-                error!("Query processor error: {}", e);
-                *status.write().await = ServiceStatus::Error(e.to_string());
-            }
-        })
-    }
-    
-    /// Start dialog processor task
-    fn start_dialog_processor(&self) -> JoinHandle<()> {
-        let agent = self.agent.clone();
-        let nats_client = self.nats_client.clone();
-        let status = self.status.clone();
-        
-        tokio::spawn(async move {
-            match nats_client.subscribe(crate::nats_integration::subjects::DIALOG).await {
-                Ok(mut sub) => {
-                    info!("Listening for dialog messages on {}", crate::nats_integration::subjects::DIALOG);
-                    
-                    while let Some(msg) = sub.next().await {
-                        match serde_json::from_slice::<DialogMessage>(&msg.payload) {
-                            Ok(dialog_msg) => {
-                                match agent.process_dialog_message(dialog_msg.clone()).await {
-                                    Ok(response) => {
-                                        // Send response
-                                        let response_msg = DialogMessage {
-                                            dialog_id: dialog_msg.dialog_id,
-                                            content: response,
-                                            sender: crate::NAME.to_string(),
-                                            metadata: serde_json::json!({
-                                                "agent_id": crate::NAME,
-                                                "timestamp": chrono::Utc::now(),
-                                            }),
-                                            timestamp: chrono::Utc::now(),
-                                        };
-                                        
-                                        let subject = format!(
-                                            "cim.dialog.{}.response",
-                                            dialog_msg.dialog_id
-                                        );
-                                        
-                                        if let Err(e) = nats_client.publish(&subject, &response_msg).await {
-                                            error!("Failed to send dialog response: {}", e);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        error!("Dialog processing error: {}", e);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                error!("Failed to parse dialog message: {}", e);
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to subscribe to dialog messages: {}", e);
-                    *status.write().await = ServiceStatus::Error(e.to_string());
-                }
-            }
-        })
-    }
-    
-    /// Start health check handler
-    fn start_health_handler(&self) -> JoinHandle<()> {
-        let agent = self.agent.clone();
-        let nats_client = self.nats_client.clone();
-        let status = self.status.clone();
-        let start_time = self.start_time;
-        
-        tokio::spawn(async move {
-            let status_fn = move || {
-                HealthResponse {
-                    status: "Running".to_string(), // TODO: Get from status
-                    version: crate::VERSION.to_string(),
-                    uptime_seconds: 0, // Will be set by handler
-                    model_status: "healthy".to_string(), // TODO: Check model health
-                    active_dialogs: 0, // TODO: Get from agent
-                    metadata: serde_json::json!({
-                        "agent_name": crate::NAME,
-                        "capabilities": {
-                            "explain_concepts": true,
-                            "visualize_architecture": true,
-                            "guide_workflows": true,
-                            "analyze_patterns": true,
-                            "suggest_improvements": true,
-                        },
-                    }),
-                }
-            };
+        let health_task = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(
+                std::time::Duration::from_secs(interval)
+            );
             
-            if let Err(e) = handle_health_checks(&nats_client, start_time, status_fn).await {
-                error!("Health check handler error: {}", e);
+            loop {
+                interval.tick().await;
+                if let Err(e) = nats_client.publish_health_check().await {
+                    error!("Health check error: {}", e);
+                }
             }
-        })
+        });
+        
+        let mut tasks = self.tasks.lock().await;
+        tasks.push(health_task);
+        
+        Ok(())
+    }
+    
+    /// Wait for service to complete (blocks until stopped)
+    pub async fn wait(&self) -> Result<()> {
+        // Wait for all tasks to complete
+        let tasks = self.tasks.lock().await;
+        if let Some(task) = tasks.first() {
+            // Wait for the first task (they should all run indefinitely)
+            let _ = task.await;
+        }
+        Ok(())
     }
 }
 

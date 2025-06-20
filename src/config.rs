@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use std::collections::HashMap;
 
 /// Main configuration for the Alchemist agent
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -83,6 +84,17 @@ pub enum ModelConfig {
         #[serde(with = "humantime_serde")]
         timeout: Duration,
     },
+}
+
+impl ModelConfig {
+    /// Get the model name being used
+    pub fn model_name(&self) -> String {
+        match self {
+            ModelConfig::Ollama { model, .. } => model.clone(),
+            ModelConfig::OpenAI { model, .. } => model.clone(),
+            ModelConfig::Anthropic { model, .. } => model.clone(),
+        }
+    }
 }
 
 /// NATS messaging configuration

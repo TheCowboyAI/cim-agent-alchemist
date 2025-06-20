@@ -4,15 +4,23 @@ use crate::error::{AgentError, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use std::collections::HashMap;
 
 /// Trait for AI model providers
 #[async_trait]
 pub trait ModelProvider: Send + Sync {
-    /// Send a request to the model and get a response
-    async fn generate(&self, request: ModelRequest) -> Result<ModelResponse>;
+    /// Generate a response from the model
+    async fn generate(&self, prompt: &str) -> Result<String, AgentError>;
 
-    /// Check if the model is available and healthy
-    async fn health_check(&self) -> Result<()>;
+    /// Generate with conversation context
+    async fn generate_with_context(
+        &self,
+        prompt: &str,
+        context: &[Message],
+    ) -> Result<String, AgentError>;
+
+    /// Check if the model is available
+    async fn health_check(&self) -> Result<(), AgentError>;
 
     /// Get model information
     fn model_info(&self) -> ModelInfo;
@@ -153,107 +161,164 @@ pub struct ModelCapabilities {
     pub embeddings: bool,
 }
 
-/// Ollama model provider implementation
+/// Ollama model provider
 pub struct OllamaProvider {
     client: reqwest::Client,
     base_url: String,
     model: String,
-    timeout: Duration,
+    options: HashMap<String, serde_json::Value>,
 }
 
 impl OllamaProvider {
     /// Create a new Ollama provider
-    pub fn new(base_url: String, model: String, timeout: Duration) -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(timeout)
-            .build()
-            .expect("Failed to create HTTP client");
-
+    pub fn new(base_url: String, model: String, options: HashMap<String, serde_json::Value>) -> Self {
         Self {
-            client,
+            client: reqwest::Client::new(),
             base_url,
             model,
-            timeout,
+            options,
         }
     }
 }
 
+#[derive(Serialize)]
+struct OllamaGenerateRequest {
+    model: String,
+    prompt: String,
+    stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    context: Option<Vec<i32>>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    options: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct OllamaGenerateResponse {
+    response: String,
+    done: bool,
+    #[serde(default)]
+    context: Vec<i32>,
+}
+
+#[derive(Serialize)]
+struct OllamaChatRequest {
+    model: String,
+    messages: Vec<OllamaMessage>,
+    stream: bool,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    options: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct OllamaMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Deserialize)]
+struct OllamaChatResponse {
+    message: OllamaMessage,
+    done: bool,
+}
+
 #[async_trait]
 impl ModelProvider for OllamaProvider {
-    async fn generate(&self, request: ModelRequest) -> Result<ModelResponse> {
-        let start = std::time::Instant::now();
+    async fn generate(&self, prompt: &str) -> Result<String, AgentError> {
+        let request = OllamaGenerateRequest {
+            model: self.model.clone(),
+            prompt: prompt.to_string(),
+            stream: false,
+            context: None,
+            options: self.options.clone(),
+        };
 
-        // Build Ollama API request
-        let ollama_request = serde_json::json!({
-            "model": self.model,
-            "prompt": request.prompt,
-            "system": request.system_prompt,
-            "context": self.build_context(&request.history),
-            "options": {
-                "temperature": request.parameters.temperature,
-                "num_predict": request.parameters.max_tokens,
-                "top_p": request.parameters.top_p,
-                "top_k": request.parameters.top_k,
-                "stop": request.parameters.stop_sequences,
-            }
-        });
-
-        let response = self
-            .client
+        let response = self.client
             .post(format!("{}/api/generate", self.base_url))
-            .json(&ollama_request)
+            .json(&request)
             .send()
             .await
-            .map_err(|e| AgentError::ModelProvider(format!("Ollama request failed: {}", e)))?;
+            .map_err(|e| AgentError::ModelError(format!("Failed to send request: {}", e)))?;
 
         if !response.status().is_success() {
+            let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AgentError::ModelProvider(format!(
-                "Ollama returned error: {}",
-                error_text
+            return Err(AgentError::ModelError(format!(
+                "Ollama API error: {} - {}",
+                status, error_text
             )));
         }
 
-        let ollama_response: serde_json::Value = response
+        let ollama_response: OllamaGenerateResponse = response
             .json()
             .await
-            .map_err(|e| AgentError::ModelProvider(format!("Failed to parse response: {}", e)))?;
+            .map_err(|e| AgentError::ModelError(format!("Failed to parse response: {}", e)))?;
 
-        // Extract response data
-        let content = ollama_response["response"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-
-        let prompt_tokens = ollama_response["prompt_eval_count"].as_u64().unwrap_or(0) as usize;
-        let completion_tokens = ollama_response["eval_count"].as_u64().unwrap_or(0) as usize;
-
-        Ok(ModelResponse {
-            content,
-            usage: TokenUsage {
-                prompt_tokens,
-                completion_tokens,
-                total_tokens: prompt_tokens + completion_tokens,
-            },
-            metadata: ollama_response,
-            duration: start.elapsed(),
-        })
+        Ok(ollama_response.response)
     }
 
-    async fn health_check(&self) -> Result<()> {
-        let response = self
-            .client
+    async fn generate_with_context(
+        &self,
+        prompt: &str,
+        context: &[Message],
+    ) -> Result<String, AgentError> {
+        let mut messages: Vec<OllamaMessage> = context
+            .iter()
+            .map(|m| OllamaMessage {
+                role: m.role.clone(),
+                content: m.content.clone(),
+            })
+            .collect();
+
+        messages.push(OllamaMessage {
+            role: "user".to_string(),
+            content: prompt.to_string(),
+        });
+
+        let request = OllamaChatRequest {
+            model: self.model.clone(),
+            messages,
+            stream: false,
+            options: self.options.clone(),
+        };
+
+        let response = self.client
+            .post(format!("{}/api/chat", self.base_url))
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| AgentError::ModelError(format!("Failed to send request: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(AgentError::ModelError(format!(
+                "Ollama API error: {} - {}",
+                status, error_text
+            )));
+        }
+
+        let ollama_response: OllamaChatResponse = response
+            .json()
+            .await
+            .map_err(|e| AgentError::ModelError(format!("Failed to parse response: {}", e)))?;
+
+        Ok(ollama_response.message.content)
+    }
+
+    async fn health_check(&self) -> Result<(), AgentError> {
+        let response = self.client
             .get(format!("{}/api/tags", self.base_url))
             .send()
             .await
-            .map_err(|e| AgentError::ServiceUnavailable(format!("Ollama health check failed: {}", e)))?;
+            .map_err(|e| AgentError::ModelError(format!("Health check failed: {}", e)))?;
 
         if response.status().is_success() {
             Ok(())
         } else {
-            Err(AgentError::ServiceUnavailable(
-                "Ollama service is not healthy".to_string(),
-            ))
+            Err(AgentError::ModelError(format!(
+                "Ollama health check failed with status: {}",
+                response.status()
+            )))
         }
     }
 
@@ -273,18 +338,33 @@ impl ModelProvider for OllamaProvider {
     }
 }
 
-impl OllamaProvider {
-    /// Build context from conversation history
-    fn build_context(&self, history: &[Message]) -> Vec<serde_json::Value> {
-        history
-            .iter()
-            .map(|msg| {
-                serde_json::json!({
-                    "role": msg.role,
-                    "content": msg.content,
-                })
-            })
-            .collect()
+/// Mock provider for testing
+pub struct MockProvider {
+    response: String,
+}
+
+impl MockProvider {
+    pub fn new(response: String) -> Self {
+        Self { response }
+    }
+}
+
+#[async_trait]
+impl ModelProvider for MockProvider {
+    async fn generate(&self, _prompt: &str) -> Result<String, AgentError> {
+        Ok(self.response.clone())
+    }
+
+    async fn generate_with_context(
+        &self,
+        _prompt: &str,
+        _context: &[Message],
+    ) -> Result<String, AgentError> {
+        Ok(self.response.clone())
+    }
+
+    async fn health_check(&self) -> Result<(), AgentError> {
+        Ok(())
     }
 }
 
@@ -299,7 +379,7 @@ pub fn create_provider(config: &crate::config::ModelConfig) -> Result<Box<dyn Mo
         } => Ok(Box::new(OllamaProvider::new(
             base_url.clone(),
             model.clone(),
-            *timeout,
+            HashMap::new(),
         ))),
         
         crate::config::ModelConfig::OpenAI { .. } => {

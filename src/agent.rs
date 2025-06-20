@@ -4,19 +4,22 @@
 //! to provide intelligent assistance for understanding CIM architecture.
 
 use crate::error::{AgentError, Result};
-use crate::model::{ModelProvider, ModelRequest, ModelResponse, Message as ModelMessage};
-use crate::nats_integration::{AgentCommand, AgentQuery, DialogMessage};
-use cim_domain_agent::{Agent, AgentStatus, AgentType};
-use cim_domain_dialog::{Dialog, DialogStatus, Turn, TurnType, Message, MessageContent};
-use cim_domain_graph::{GraphAggregate, NodeId, EdgeId};
-use cim_domain_conceptualspaces::{ConceptualSpace, ConceptualPoint};
-use cim_domain_workflow::{Workflow, WorkflowStatus};
+use crate::model::{ModelProvider, Message as ModelMessage};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
 
-/// The Alchemist agent - helps users understand CIM architecture
+// Domain imports
+use cim_domain_agent::aggregate::Agent;
+use cim_domain_agent::commands::AgentCommand;
+use cim_domain_agent::queries::AgentQuery;
+use cim_domain_dialog::aggregate::{Dialog, DialogStatus};
+use cim_domain_dialog::value_objects::{Message, MessageContent, Turn, TurnType};
+use cim_domain_graph::aggregate::GraphAggregate;
+use cim_domain_conceptualspaces::aggregate::ConceptualSpace;
+use cim_domain_workflow::aggregate::{Workflow, WorkflowStatus};
+
+/// The Alchemist agent - helps users understand and work with CIM
 pub struct AlchemistAgent {
     /// Agent identity from agent domain
     agent: Agent,
@@ -41,7 +44,7 @@ pub struct AlchemistAgent {
 }
 
 /// Capabilities of the Alchemist agent
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct AlchemistCapabilities {
     /// Can explain CIM concepts
     pub explain_concepts: bool,
@@ -68,30 +71,32 @@ impl AlchemistAgent {
         // Create agent identity
         let agent = Agent {
             id: uuid::Uuid::new_v4(),
-            name: config.identity.name.clone(),
-            agent_type: AgentType::Assistant,
-            status: AgentStatus::Active,
+            name: config.name.clone(),
+            description: config.description.clone(),
+            capabilities: vec![
+                "explain_concepts".to_string(),
+                "visualize_architecture".to_string(),
+                "guide_workflows".to_string(),
+                "analyze_patterns".to_string(),
+                "suggest_improvements".to_string(),
+            ],
             metadata: serde_json::json!({
-                "version": config.identity.version,
-                "description": config.identity.description,
-                "organization": config.identity.organization,
+                "version": env!("CARGO_PKG_VERSION"),
+                "type": "alchemist",
             }),
         };
-        
-        // Initialize knowledge graph with CIM concepts
-        let knowledge_graph = GraphAggregate::new(uuid::Uuid::new_v4());
-        
-        // Initialize conceptual space
-        let conceptual_space = ConceptualSpace::new(
-            uuid::Uuid::new_v4(),
-            "CIM Architecture Space".to_string(),
-        );
         
         Ok(Self {
             agent,
             dialogs: Arc::new(RwLock::new(HashMap::new())),
-            knowledge_graph: Arc::new(RwLock::new(knowledge_graph)),
-            conceptual_space: Arc::new(RwLock::new(conceptual_space)),
+            knowledge_graph: Arc::new(RwLock::new(GraphAggregate::new(
+                uuid::Uuid::new_v4(),
+                "CIM Knowledge Graph".to_string(),
+            ))),
+            conceptual_space: Arc::new(RwLock::new(ConceptualSpace::new(
+                uuid::Uuid::new_v4(),
+                "CIM Conceptual Space".to_string(),
+            ))),
             workflows: Arc::new(RwLock::new(HashMap::new())),
             model_provider,
             config,
@@ -109,32 +114,25 @@ impl AlchemistAgent {
         }
     }
     
-    /// Process a command
+    /// Process an agent command
     pub async fn process_command(&self, command: AgentCommand) -> Result<serde_json::Value> {
-        match command.command_type.as_str() {
-            "start_dialog" => self.start_dialog(command.payload).await,
-            "explain_concept" => self.explain_concept(command.payload).await,
-            "visualize_architecture" => self.visualize_architecture(command.payload).await,
-            "guide_workflow" => self.guide_workflow(command.payload).await,
-            "analyze_pattern" => self.analyze_pattern(command.payload).await,
-            _ => Err(AgentError::NotFound(format!(
-                "Unknown command type: {}",
-                command.command_type
-            ))),
+        match command {
+            AgentCommand::ExplainConcept { payload } => self.explain_concept(payload).await,
+            AgentCommand::VisualizeArchitecture { payload } => self.visualize_architecture(payload).await,
+            AgentCommand::GuideWorkflow { payload } => self.guide_workflow(payload).await,
+            AgentCommand::AnalyzePattern { payload } => self.analyze_pattern(payload).await,
+            _ => Err(AgentError::InvalidRequest("Unknown command".to_string())),
         }
     }
     
-    /// Process a query
+    /// Process an agent query
     pub async fn process_query(&self, query: AgentQuery) -> Result<serde_json::Value> {
-        match query.query_type.as_str() {
-            "list_concepts" => self.list_concepts(query.parameters).await,
-            "find_similar" => self.find_similar_concepts(query.parameters).await,
-            "get_dialog_history" => self.get_dialog_history(query.parameters).await,
-            "get_workflow_status" => self.get_workflow_status(query.parameters).await,
-            _ => Err(AgentError::NotFound(format!(
-                "Unknown query type: {}",
-                query.query_type
-            ))),
+        match query {
+            AgentQuery::ListConcepts { parameters } => self.list_concepts(parameters).await,
+            AgentQuery::FindSimilarConcepts { parameters } => self.find_similar_concepts(parameters).await,
+            AgentQuery::GetDialogHistory { parameters } => self.get_dialog_history(parameters).await,
+            AgentQuery::GetWorkflowStatus { parameters } => self.get_workflow_status(parameters).await,
+            _ => Err(AgentError::InvalidRequest("Unknown query".to_string())),
         }
     }
     
@@ -179,40 +177,37 @@ impl AlchemistAgent {
                     MessageContent::Text(text) => text.clone(),
                     MessageContent::Structured(json) => json.to_string(),
                 },
-                timestamp: turn.timestamp,
             })
             .collect();
         
-        // Generate response using AI model
-        let model_request = ModelRequest {
-            prompt: message.content,
-            history,
-            system_prompt: Some(self.get_system_prompt()),
-            parameters: Default::default(),
-            metadata: serde_json::json!({
-                "dialog_id": message.dialog_id,
-                "agent_id": self.agent.id,
-            }),
-        };
+        // Add system prompt as first message if history is empty
+        let mut context = vec![ModelMessage {
+            role: "system".to_string(),
+            content: self.get_system_prompt(),
+        }];
+        context.extend(history);
         
-        let response = self.model_provider.generate(model_request).await?;
+        // Generate response using AI model
+        let response = self.model_provider
+            .generate_with_context(&message.content, &context)
+            .await?;
         
         // Add assistant turn
         dialog.turns.push(Turn {
             id: uuid::Uuid::new_v4(),
             turn_type: TurnType::Assistant,
             message: Message {
-                content: MessageContent::Text(response.content.clone()),
+                content: MessageContent::Text(response.clone()),
                 intent: None,
                 metadata: serde_json::json!({
-                    "model_metadata": response.metadata,
-                    "usage": response.usage,
+                    "model": self.config.model_provider.model_name(),
+                    "agent_id": self.agent.id,
                 }),
             },
             timestamp: chrono::Utc::now(),
         });
         
-        Ok(response.content)
+        Ok(response)
     }
     
     /// Start a new dialog
@@ -255,7 +250,7 @@ impl AlchemistAgent {
             .ok_or_else(|| AgentError::Configuration("Missing concept parameter".to_string()))?;
         
         // Look up concept in knowledge graph
-        let graph = self.knowledge_graph.read().await;
+        let _graph = self.knowledge_graph.read().await;
         
         // Generate explanation using model
         let prompt = format!(
@@ -264,19 +259,11 @@ impl AlchemistAgent {
             concept
         );
         
-        let model_request = ModelRequest {
-            prompt,
-            history: vec![],
-            system_prompt: Some(self.get_system_prompt()),
-            parameters: Default::default(),
-            metadata: serde_json::json!({ "concept": concept }),
-        };
-        
-        let response = self.model_provider.generate(model_request).await?;
+        let response = self.model_provider.generate(&prompt).await?;
         
         Ok(serde_json::json!({
             "concept": concept,
-            "explanation": response.content,
+            "explanation": response,
             "related_concepts": self.find_related_concepts(concept).await?,
             "examples": self.find_concept_examples(concept).await?,
         }))
@@ -319,7 +306,7 @@ impl AlchemistAgent {
             "create_agent" => self.create_agent_workflow().await?,
             "implement_domain" => self.create_domain_workflow().await?,
             "add_event" => self.create_event_workflow().await?,
-            _ => return Err(AgentError::NotFound(format!("Unknown workflow type: {}", workflow_type))),
+            _ => return Err(AgentError::Domain(format!("Unknown workflow type: {}", workflow_type))),
         };
         
         self.workflows.write().await.insert(workflow_id.clone(), workflow);
@@ -349,19 +336,11 @@ impl AlchemistAgent {
             pattern_type, code
         );
         
-        let model_request = ModelRequest {
-            prompt,
-            history: vec![],
-            system_prompt: Some(self.get_system_prompt()),
-            parameters: Default::default(),
-            metadata: serde_json::json!({ "pattern_type": pattern_type }),
-        };
-        
-        let response = self.model_provider.generate(model_request).await?;
+        let response = self.model_provider.generate(&prompt).await?;
         
         Ok(serde_json::json!({
             "pattern_type": pattern_type,
-            "analysis": response.content,
+            "analysis": response,
             "recommendations": self.generate_pattern_recommendations(pattern_type, code).await?,
         }))
     }
@@ -400,7 +379,7 @@ impl AlchemistAgent {
             .ok_or_else(|| AgentError::Configuration("Missing concept parameter".to_string()))?;
         
         // Use conceptual space to find similar concepts
-        let space = self.conceptual_space.read().await;
+        let _space = self.conceptual_space.read().await;
         
         // For now, return mock similar concepts
         let similar = match concept {
@@ -425,7 +404,7 @@ impl AlchemistAgent {
         let dialogs = self.dialogs.read().await;
         let dialog = dialogs
             .get(dialog_id)
-            .ok_or_else(|| AgentError::NotFound(format!("Dialog {} not found", dialog_id)))?;
+            .ok_or_else(|| AgentError::Domain(format!("Dialog {} not found", dialog_id)))?;
         
         let history: Vec<serde_json::Value> = dialog
             .turns
@@ -459,7 +438,7 @@ impl AlchemistAgent {
         let workflows = self.workflows.read().await;
         let workflow = workflows
             .get(workflow_id)
-            .ok_or_else(|| AgentError::NotFound(format!("Workflow {} not found", workflow_id)))?;
+            .ok_or_else(|| AgentError::Domain(format!("Workflow {} not found", workflow_id)))?;
         
         Ok(serde_json::json!({
             "workflow_id": workflow_id,
@@ -578,16 +557,8 @@ impl AlchemistAgent {
             scope
         );
         
-        let model_request = ModelRequest {
-            prompt,
-            history: vec![],
-            system_prompt: Some(self.get_system_prompt()),
-            parameters: Default::default(),
-            metadata: serde_json::json!({ "scope": scope }),
-        };
-        
-        let response = self.model_provider.generate(model_request).await?;
-        Ok(response.content)
+        let response = self.model_provider.generate(&prompt).await?;
+        Ok(response)
     }
     
     async fn create_agent_workflow(&self) -> Result<Workflow> {
@@ -663,16 +634,16 @@ impl AlchemistAgent {
             current_node: Some("define".to_string()),
             nodes: vec![
                 ("define".to_string(), serde_json::json!({"step": "Define event structure"})),
-                ("handler".to_string(), serde_json::json!({"step": "Update event handler"})),
-                ("aggregate".to_string(), serde_json::json!({"step": "Update aggregate"})),
+                ("handler".to_string(), serde_json::json!({"step": "Create event handler"})),
                 ("test".to_string(), serde_json::json!({"step": "Write event tests"})),
+                ("integrate".to_string(), serde_json::json!({"step": "Integrate with aggregate"})),
             ]
             .into_iter()
             .collect(),
             edges: vec![
                 (("define".to_string(), "handler".to_string()), serde_json::json!({"label": "next"})),
-                (("handler".to_string(), "aggregate".to_string()), serde_json::json!({"label": "next"})),
-                (("aggregate".to_string(), "test".to_string()), serde_json::json!({"label": "next"})),
+                (("handler".to_string(), "test".to_string()), serde_json::json!({"label": "next"})),
+                (("test".to_string(), "integrate".to_string()), serde_json::json!({"label": "next"})),
             ]
             .into_iter()
             .collect(),
@@ -687,31 +658,34 @@ impl AlchemistAgent {
             "create_agent" => serde_json::json!({
                 "step": "setup",
                 "title": "Setup Project Structure",
-                "description": "Create the directory structure for your new agent",
-                "instructions": [
-                    "Create cim-agent-{name} directory",
-                    "Initialize Cargo.toml with dependencies",
-                    "Create src/lib.rs with module structure",
+                "description": "Create a new cim-agent-* directory with the standard structure",
+                "actions": [
+                    "Create Cargo.toml with dependencies",
+                    "Set up src/ directory structure",
+                    "Create configuration templates",
+                    "Initialize git repository",
                 ],
             }),
             "implement_domain" => serde_json::json!({
                 "step": "design",
                 "title": "Design Domain Model",
-                "description": "Define the core concepts and boundaries of your domain",
-                "instructions": [
-                    "Identify domain entities and value objects",
-                    "Define aggregate boundaries",
+                "description": "Define the domain boundaries and core concepts",
+                "actions": [
+                    "Identify aggregates and entities",
+                    "Define value objects",
+                    "Map relationships",
                     "Document ubiquitous language",
                 ],
             }),
             "add_event" => serde_json::json!({
                 "step": "define",
                 "title": "Define Event Structure",
-                "description": "Create the event type and its payload",
-                "instructions": [
-                    "Choose descriptive past-tense event name",
-                    "Define event fields and types",
-                    "Add to events.rs module",
+                "description": "Create the event type and its properties",
+                "actions": [
+                    "Choose event name (past tense)",
+                    "Define event payload",
+                    "Add serialization derives",
+                    "Document event purpose",
                 ],
             }),
             _ => serde_json::json!({
@@ -725,47 +699,55 @@ impl AlchemistAgent {
     async fn generate_pattern_recommendations(&self, pattern_type: &str, code: &str) -> Result<Vec<String>> {
         // Generate recommendations based on pattern analysis
         let prompt = format!(
-            "Based on the {} pattern analysis, provide specific recommendations \
-             for improving this code to better align with CIM architecture principles.",
-            pattern_type
+            "Based on this {} pattern:\n\n{}\n\n\
+             Provide 3-5 specific recommendations for improvement in the context of CIM architecture.",
+            pattern_type, code
         );
         
-        let model_request = ModelRequest {
-            prompt,
-            history: vec![ModelMessage {
-                role: "user".to_string(),
-                content: code.to_string(),
-                timestamp: chrono::Utc::now(),
-            }],
-            system_prompt: Some(self.get_system_prompt()),
-            parameters: Default::default(),
-            metadata: serde_json::json!({ "pattern_type": pattern_type }),
-        };
-        
-        let response = self.model_provider.generate(model_request).await?;
+        let response = self.model_provider.generate(&prompt).await?;
         
         // Parse recommendations from response
         let recommendations: Vec<String> = response
-            .content
             .lines()
-            .filter(|line| line.starts_with("- ") || line.starts_with("* "))
+            .filter(|line| line.trim().starts_with("- ") || line.trim().starts_with("* "))
             .map(|line| line.trim_start_matches("- ").trim_start_matches("* ").to_string())
             .collect();
         
-        Ok(recommendations)
+        if recommendations.is_empty() {
+            Ok(vec![
+                "Consider using event sourcing for state changes".to_string(),
+                "Ensure proper separation between commands and queries".to_string(),
+                "Add appropriate error handling".to_string(),
+            ])
+        } else {
+            Ok(recommendations)
+        }
     }
 }
 
-// Extension methods for domain types
+// Dialog message for conversations
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DialogMessage {
+    pub dialog_id: String,
+    pub content: String,
+    pub metadata: serde_json::Value,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
 impl Workflow {
     fn progress_percentage(&self) -> f32 {
-        // Calculate workflow progress
-        if let Some(current) = &self.current_node {
-            let total_nodes = self.nodes.len();
-            let current_index = self.nodes.keys().position(|k| k == current).unwrap_or(0);
-            (current_index as f32 / total_nodes as f32) * 100.0
-        } else {
-            0.0
+        if self.nodes.is_empty() {
+            return 0.0;
         }
+        
+        // Simple progress calculation based on current node position
+        if let Some(current) = &self.current_node {
+            let node_keys: Vec<_> = self.nodes.keys().collect();
+            if let Some(pos) = node_keys.iter().position(|k| k == &current) {
+                return ((pos + 1) as f32 / node_keys.len() as f32) * 100.0;
+            }
+        }
+        
+        0.0
     }
 } 
