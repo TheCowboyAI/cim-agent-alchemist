@@ -7,6 +7,10 @@ description = "Alchemist Agent - A CIM agent that helps understand and navigate 
 license = "MIT"
 repository = "https://github.com/thecowboyai/alchemist"
 
+[features]
+default = []
+bevy = ["dep:bevy", "dep:crossbeam-channel"]
+
 [dependencies]
 # Core CIM domains
 cim-domain-agent = { path = "../cim-domain-agent" }
@@ -32,46 +36,43 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Error handling
-thiserror = "1.0"
+thiserror = "2.0"
 anyhow = "1.0"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# AI Model integration - using reqwest directly
-reqwest = { version = "0.12", features = ["json"] }
-
-# UUID generation
+# Utilities
 uuid = { version = "1.10", features = ["v4", "serde"] }
-
-# Time handling
 chrono = { version = "0.4", features = ["serde"] }
-
-# Configuration
-config = "0.14"
-
-# CLI parsing
+async-trait = "0.1"
 clap = { version = "4.5", features = ["derive"] }
 
-# Additional serialization formats
-serde_yaml = "0.9"
-toml = "0.8"
-
-# Async trait
-async-trait = "0.1"
-
-[[bin]]
-name = "alchemist"
-path = "src/main.rs"
+# Bevy (optional)
+bevy = { version = "0.16", optional = true, default-features = false, features = [
+    "bevy_app",
+    "bevy_ecs",
+    "bevy_hierarchy",
+    "bevy_input",
+    "bevy_log",
+    "bevy_reflect",
+    "bevy_time",
+    "bevy_transform",
+    "bevy_window",
+    "bevy_winit",
+    "multi_threaded",
+] }
+crossbeam-channel = { version = "0.5", optional = true }
 
 [dev-dependencies]
 tokio-test = "0.4"
 mockall = "0.13"
-wiremock = "0.6"
 
-[features]
-default = ["ollama"]
-ollama = []
-openai = []
-anthropic = []
+[[bin]]
+name = "cim-agent-alchemist"
+path = "src/main.rs"
+
+[[example]]
+name = "simple_test"
+path = "examples/simple_test.rs"
