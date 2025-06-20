@@ -1,6 +1,6 @@
 [package]
 name = "cim-agent-alchemist"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["CIM Team"]
 description = "Alchemist Agent - A CIM agent that helps understand and navigate CIM architecture"
