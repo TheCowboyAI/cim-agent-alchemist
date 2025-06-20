@@ -1,0 +1,56 @@
+# Alchemist Agent Configuration Example
+
+identity:
+  agent_id: "alchemist-001"
+  name: "Alchemist"
+  description: "CIM Architecture Assistant - Helps users understand and navigate CIM"
+  version: "0.1.0"
+  organization: "CIM"
+
+model:
+  provider: "Ollama"
+  base_url: "http://localhost:11434"
+  model: "vicuna"
+  timeout: "30s"
+  temperature: 0.7
+  max_tokens: 2048
+
+nats:
+  servers:
+    - "nats://localhost:4222"
+  subject_prefix: "cim.agent.alchemist"
+  retry:
+    max_attempts: 5
+    initial_delay: "100ms"
+    max_delay: "30s"
+    multiplier: 2.0
+  jetstream:
+    stream_name: "ALCHEMIST_EVENTS"
+    consumer_name: "alchemist-consumer"
+    dedupe_window: "120s"
+
+service:
+  bind_address: "0.0.0.0"
+  port: 8080
+  health_check_interval: "30s"
+  metrics:
+    enabled: true
+    endpoint: "/metrics"
+  logging:
+    level: "info"
+    format: "json"
+    colors: false
+
+domains:
+  dialog:
+    max_history: 100
+    context_window: 10
+    session_timeout: "3600s"
+  graph:
+    max_nodes: 1000
+    auto_layout: true
+    layout_algorithm: "force-directed"
+  workflow:
+    max_concurrent: 10
+    timeout: "300s"
+    persist: true 

@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  # NATS Server with JetStream
+  nats:
+    image: nats:latest
+    container_name: alchemist-nats
+    command: "-js -DV"
+    ports:
+      - "4222:4222"  # Client connections
+      - "8222:8222"  # HTTP management
+    volumes:
+      - nats_data:/data
+    networks:
+      - alchemist-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "4222"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Ollama for AI model serving
+  ollama:
+    image: ollama/ollama:latest
+    container_name: alchemist-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - alchemist-network
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Ollama model puller - runs once to ensure model is available
+  ollama-puller:
+    image: ollama/ollama:latest
+    container_name: alchemist-ollama-puller
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - alchemist-network
+    entrypoint: >
+      sh -c "
+        ollama pull vicuna &&
+        echo 'Vicuna model pulled successfully'
+      "
+    restart: "no"
+
+  # Alchemist Agent
+  alchemist:
+    build:
+      context: ../..
+      dockerfile: cim-agent-alchemist/Dockerfile
+    container_name: alchemist-agent
+    depends_on:
+      nats:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      ollama-puller:
+        condition: service_completed_successfully
+    networks:
+      - alchemist-network
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+    environment:
+      - RUST_LOG=info,cim_agent_alchemist=debug
+      - RUST_BACKTRACE=1
+    command: ["--config", "/config/config.yaml"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nats", "request", "cim.agent.alchemist.health", ""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # NATS CLI for testing
+  nats-cli:
+    image: natsio/nats-box:latest
+    container_name: alchemist-nats-cli
+    depends_on:
+      - nats
+      - alchemist
+    networks:
+      - alchemist-network
+    command: sleep infinity
+    volumes:
+      - ./examples:/examples:ro
+
+networks:
+  alchemist-network:
+    driver: bridge
+
+volumes:
+  nats_data:
+    driver: local
+  ollama_data:
+    driver: local 
