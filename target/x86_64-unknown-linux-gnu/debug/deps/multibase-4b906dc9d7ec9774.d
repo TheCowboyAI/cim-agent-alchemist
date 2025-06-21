@@ -1,0 +1,11 @@
+/git/thecowboyai/alchemist/cim-agent-alchemist/target/x86_64-unknown-linux-gnu/debug/deps/multibase-4b906dc9d7ec9774.d: /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/lib.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/base.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/encoding.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/error.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/impls.rs
+
+/git/thecowboyai/alchemist/cim-agent-alchemist/target/x86_64-unknown-linux-gnu/debug/deps/libmultibase-4b906dc9d7ec9774.rlib: /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/lib.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/base.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/encoding.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/error.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/impls.rs
+
+/git/thecowboyai/alchemist/cim-agent-alchemist/target/x86_64-unknown-linux-gnu/debug/deps/libmultibase-4b906dc9d7ec9774.rmeta: /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/lib.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/base.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/encoding.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/error.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/impls.rs
+
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/lib.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/base.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/encoding.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/error.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/multibase-0.9.1/src/impls.rs:

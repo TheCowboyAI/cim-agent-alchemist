@@ -68,3 +68,5 @@ path = "src/main.rs"
 [[example]]
 name = "simple_test"
 path = "examples/simple_test.rs"
+
+[workspace]
