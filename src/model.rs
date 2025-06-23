@@ -10,17 +10,17 @@ use std::collections::HashMap;
 #[async_trait]
 pub trait ModelProvider: Send + Sync {
     /// Generate a response from the model
-    async fn generate(&self, prompt: &str) -> Result<String, AgentError>;
+    async fn generate(&self, prompt: &str) -> Result<String>;
 
     /// Generate with conversation context
     async fn generate_with_context(
         &self,
         prompt: &str,
         context: &[Message],
-    ) -> Result<String, AgentError>;
+    ) -> Result<String>;
 
     /// Check if the model is available
-    async fn health_check(&self) -> Result<(), AgentError>;
+    async fn health_check(&self) -> Result<()>;
 
     /// Get model information
     fn model_info(&self) -> ModelInfo;
@@ -223,7 +223,7 @@ struct OllamaChatResponse {
 
 #[async_trait]
 impl ModelProvider for OllamaProvider {
-    async fn generate(&self, prompt: &str) -> Result<String, AgentError> {
+    async fn generate(&self, prompt: &str) -> Result<String> {
         let request = OllamaGenerateRequest {
             model: self.model.clone(),
             prompt: prompt.to_string(),
@@ -260,7 +260,7 @@ impl ModelProvider for OllamaProvider {
         &self,
         prompt: &str,
         context: &[Message],
-    ) -> Result<String, AgentError> {
+    ) -> Result<String> {
         let mut messages: Vec<OllamaMessage> = context
             .iter()
             .map(|m| OllamaMessage {
@@ -305,7 +305,7 @@ impl ModelProvider for OllamaProvider {
         Ok(ollama_response.message.content)
     }
 
-    async fn health_check(&self) -> Result<(), AgentError> {
+    async fn health_check(&self) -> Result<()> {
         let response = self.client
             .get(format!("{}/api/tags", self.base_url))
             .send()
@@ -351,7 +351,7 @@ impl MockProvider {
 
 #[async_trait]
 impl ModelProvider for MockProvider {
-    async fn generate(&self, _prompt: &str) -> Result<String, AgentError> {
+    async fn generate(&self, _prompt: &str) -> Result<String> {
         Ok(self.response.clone())
     }
 
@@ -359,11 +359,11 @@ impl ModelProvider for MockProvider {
         &self,
         _prompt: &str,
         _context: &[Message],
-    ) -> Result<String, AgentError> {
+    ) -> Result<String> {
         Ok(self.response.clone())
     }
 
-    async fn health_check(&self) -> Result<(), AgentError> {
+    async fn health_check(&self) -> Result<()> {
         Ok(())
     }
 }

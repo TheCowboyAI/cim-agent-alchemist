@@ -2,7 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use std::collections::HashMap;
 
 /// Main configuration for the Alchemist agent
 #[derive(Debug, Clone, Deserialize, Serialize)]

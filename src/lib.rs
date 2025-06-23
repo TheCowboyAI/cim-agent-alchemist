@@ -14,7 +14,7 @@ pub mod bevy_plugin;
 
 // Re-export main types
 pub use agent::AlchemistAgent;
-pub use config::Config;
+pub use config::AgentConfig;
 pub use error::{AgentError, Result};
 pub use service::AgentService;
 pub use nats_integration::NatsClient;

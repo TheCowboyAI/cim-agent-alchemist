@@ -1,0 +1,12 @@
+/git/thecowboyai/alchemist/cim-agent-alchemist/target/x86_64-unknown-linux-gnu/debug/deps/core2-b40060e53113e70f.d: /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/lib.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/error.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/mod.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/cursor.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/error.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/impls.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/traits.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/util.rs
+
+/git/thecowboyai/alchemist/cim-agent-alchemist/target/x86_64-unknown-linux-gnu/debug/deps/libcore2-b40060e53113e70f.rmeta: /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/lib.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/error.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/mod.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/cursor.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/error.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/impls.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/traits.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/util.rs
+
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/lib.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/error.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/mod.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/cursor.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/error.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/impls.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/traits.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.4.0/src/io/util.rs:

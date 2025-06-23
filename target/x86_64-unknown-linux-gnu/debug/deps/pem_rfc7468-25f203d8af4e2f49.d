@@ -1,0 +1,10 @@
+/git/thecowboyai/alchemist/cim-agent-alchemist/target/x86_64-unknown-linux-gnu/debug/deps/pem_rfc7468-25f203d8af4e2f49.d: /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/lib.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/decoder.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/encoder.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/error.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/grammar.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/../README.md
+
+/git/thecowboyai/alchemist/cim-agent-alchemist/target/x86_64-unknown-linux-gnu/debug/deps/libpem_rfc7468-25f203d8af4e2f49.rmeta: /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/lib.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/decoder.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/encoder.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/error.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/grammar.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/../README.md
+
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/lib.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/decoder.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/encoder.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/error.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/grammar.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pem-rfc7468-0.7.0/src/../README.md:

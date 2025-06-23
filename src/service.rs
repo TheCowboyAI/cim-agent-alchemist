@@ -4,7 +4,7 @@
 //! handling NATS connections, message processing, and lifecycle management.
 
 use crate::agent::AlchemistAgent;
-use crate::config::Config;
+use crate::config::AgentConfig;
 use crate::error::{AgentError, Result};
 use crate::model::{ModelProvider, OllamaProvider};
 use crate::nats_integration::NatsClient;
@@ -34,7 +34,7 @@ pub enum ServiceStatus {
 /// The main agent service that orchestrates all components
 #[derive(Clone)]
 pub struct AgentService {
-    config: Config,
+    config: AgentConfig,
     agent: Arc<AlchemistAgent>,
     nats_client: Arc<NatsClient>,
     tasks: Arc<tokio::sync::Mutex<Vec<JoinHandle<()>>>>,
@@ -42,13 +42,13 @@ pub struct AgentService {
 
 impl AgentService {
     /// Create a new agent service
-    pub async fn new(config: Config) -> Result<Self> {
+    pub async fn new(config: AgentConfig) -> Result<Self> {
         // Create model provider based on configuration
         let model_provider = Self::create_model_provider(&config)?;
         
         // Create the Alchemist agent
         let agent = Arc::new(
-            AlchemistAgent::new(config.agent.clone(), model_provider).await?
+            AlchemistAgent::new(config.identity.clone(), model_provider).await?
         );
         
         // Create NATS client
@@ -91,21 +91,21 @@ impl AgentService {
     }
     
     /// Create model provider based on configuration
-    fn create_model_provider(config: &Config) -> Result<Box<dyn ModelProvider>> {
-        match &config.model_provider {
-            crate::config::ModelProviderConfig::Ollama { ollama } => {
+    fn create_model_provider(config: &AgentConfig) -> Result<Box<dyn ModelProvider>> {
+        match &config.model {
+            crate::config::ModelConfig::Ollama { base_url, model, .. } => {
                 Ok(Box::new(OllamaProvider::new(
-                    ollama.base_url.clone(),
-                    ollama.model.clone(),
-                    ollama.options.clone(),
+                    base_url.clone(),
+                    model.clone(),
+                    std::collections::HashMap::new(),
                 )))
             }
-            crate::config::ModelProviderConfig::OpenAI { .. } => {
+            crate::config::ModelConfig::OpenAI { .. } => {
                 Err(AgentError::Configuration(
                     "OpenAI provider not yet implemented".to_string()
                 ))
             }
-            crate::config::ModelProviderConfig::Anthropic { .. } => {
+            crate::config::ModelConfig::Anthropic { .. } => {
                 Err(AgentError::Configuration(
                     "Anthropic provider not yet implemented".to_string()
                 ))
@@ -157,7 +157,7 @@ impl AgentService {
     /// Start health check task
     async fn start_health_check(&self) -> Result<()> {
         let nats_client = self.nats_client.clone();
-        let interval = self.config.service.health_check_interval;
+        let interval = self.config.service.health_check_interval.as_secs();
         
         let health_task = tokio::spawn(async move {
             let mut interval = tokio::time::interval(

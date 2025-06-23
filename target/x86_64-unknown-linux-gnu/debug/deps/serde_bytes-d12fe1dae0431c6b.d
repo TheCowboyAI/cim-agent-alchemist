@@ -1,0 +1,10 @@
+/git/thecowboyai/alchemist/cim-agent-alchemist/target/x86_64-unknown-linux-gnu/debug/deps/serde_bytes-d12fe1dae0431c6b.d: /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/lib.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/bytearray.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/bytes.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/de.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/ser.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/bytebuf.rs
+
+/git/thecowboyai/alchemist/cim-agent-alchemist/target/x86_64-unknown-linux-gnu/debug/deps/libserde_bytes-d12fe1dae0431c6b.rmeta: /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/lib.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/bytearray.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/bytes.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/de.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/ser.rs /home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/bytebuf.rs
+
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/lib.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/bytearray.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/bytes.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/de.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/ser.rs:
+/home/steele/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_bytes-0.11.17/src/bytebuf.rs:

@@ -11,13 +11,11 @@ use tokio::sync::RwLock;
 
 // Domain imports
 use cim_domain_agent::aggregate::Agent;
-use cim_domain_agent::commands::AgentCommand;
-use cim_domain_agent::queries::AgentQuery;
 use cim_domain_dialog::aggregate::{Dialog, DialogStatus};
 use cim_domain_dialog::value_objects::{Message, MessageContent, Turn, TurnType};
-use cim_domain_graph::aggregate::GraphAggregate;
-use cim_domain_conceptualspaces::aggregate::ConceptualSpace;
-use cim_domain_workflow::aggregate::{Workflow, WorkflowStatus};
+use cim_domain_graph::aggregate::Graph;
+use cim_domain_conceptualspaces::ConceptualSpaceAggregate;
+use cim_domain_workflow::WorkflowStatus;
 
 /// The Alchemist agent - helps users understand and work with CIM
 pub struct AlchemistAgent {
@@ -28,10 +26,10 @@ pub struct AlchemistAgent {
     dialogs: Arc<RwLock<HashMap<String, Dialog>>>,
     
     /// Knowledge graph of CIM concepts
-    knowledge_graph: Arc<RwLock<GraphAggregate>>,
+    knowledge_graph: Arc<RwLock<Graph>>,
     
     /// Conceptual space for semantic understanding
-    conceptual_space: Arc<RwLock<ConceptualSpace>>,
+    conceptual_space: Arc<RwLock<ConceptualSpaceAggregate>>,
     
     /// Active workflows
     workflows: Arc<RwLock<HashMap<String, Workflow>>>,
@@ -69,33 +67,45 @@ impl AlchemistAgent {
         model_provider: Box<dyn ModelProvider>,
     ) -> Result<Self> {
         // Create agent identity
-        let agent = Agent {
-            id: uuid::Uuid::new_v4(),
-            name: config.name.clone(),
-            description: config.description.clone(),
-            capabilities: vec![
-                "explain_concepts".to_string(),
-                "visualize_architecture".to_string(),
-                "guide_workflows".to_string(),
-                "analyze_patterns".to_string(),
-                "suggest_improvements".to_string(),
-            ],
-            metadata: serde_json::json!({
-                "version": env!("CARGO_PKG_VERSION"),
-                "type": "alchemist",
-            }),
+        let agent_id = uuid::Uuid::new_v4();
+        let mut agent = Agent::new(
+            agent_id,
+            cim_domain_agent::AgentType::AI,
+            uuid::Uuid::new_v4(), // Owner ID - could be configured
+        );
+        
+        // Add metadata component
+        let metadata = cim_domain_agent::AgentMetadata {
+            name: config.identity.name.clone(),
+            description: config.identity.description.clone(),
+            tags: ["alchemist", "cim", "assistant"].iter().map(|s| s.to_string()).collect(),
+            created_at: chrono::Utc::now(),
+            last_active: None,
         };
+        agent.add_component(metadata).ok();
+        
+        // Add capabilities component
+        let capabilities = cim_domain_agent::CapabilitiesComponent::new(vec![
+            "explain_concepts".to_string(),
+            "visualize_architecture".to_string(),
+            "guide_workflows".to_string(),
+            "analyze_patterns".to_string(),
+            "suggest_improvements".to_string(),
+        ]);
+        agent.add_component(capabilities).ok();
         
         Ok(Self {
             agent,
             dialogs: Arc::new(RwLock::new(HashMap::new())),
-            knowledge_graph: Arc::new(RwLock::new(GraphAggregate::new(
-                uuid::Uuid::new_v4(),
+            knowledge_graph: Arc::new(RwLock::new(Graph::new(
+                cim_domain_graph::GraphId::new(),
                 "CIM Knowledge Graph".to_string(),
+                "Knowledge graph of CIM concepts and relationships".to_string(),
             ))),
-            conceptual_space: Arc::new(RwLock::new(ConceptualSpace::new(
-                uuid::Uuid::new_v4(),
+            conceptual_space: Arc::new(RwLock::new(ConceptualSpaceAggregate::new(
                 "CIM Conceptual Space".to_string(),
+                vec![], // No dimensions initially
+                cim_domain_conceptualspaces::ConceptualMetric::default(),
             ))),
             workflows: Arc::new(RwLock::new(HashMap::new())),
             model_provider,
@@ -114,25 +124,25 @@ impl AlchemistAgent {
         }
     }
     
-    /// Process an agent command
-    pub async fn process_command(&self, command: AgentCommand) -> Result<serde_json::Value> {
-        match command {
-            AgentCommand::ExplainConcept { payload } => self.explain_concept(payload).await,
-            AgentCommand::VisualizeArchitecture { payload } => self.visualize_architecture(payload).await,
-            AgentCommand::GuideWorkflow { payload } => self.guide_workflow(payload).await,
-            AgentCommand::AnalyzePattern { payload } => self.analyze_pattern(payload).await,
-            _ => Err(AgentError::InvalidRequest("Unknown command".to_string())),
+    /// Process a generic command
+    pub async fn process_command(&self, command_type: &str, payload: serde_json::Value) -> Result<serde_json::Value> {
+        match command_type {
+            "explain_concept" => self.explain_concept(payload).await,
+            "visualize_architecture" => self.visualize_architecture(payload).await,
+            "guide_workflow" => self.guide_workflow(payload).await,
+            "analyze_pattern" => self.analyze_pattern(payload).await,
+            _ => Err(AgentError::InvalidRequest(format!("Unknown command: {}", command_type))),
         }
     }
     
-    /// Process an agent query
-    pub async fn process_query(&self, query: AgentQuery) -> Result<serde_json::Value> {
-        match query {
-            AgentQuery::ListConcepts { parameters } => self.list_concepts(parameters).await,
-            AgentQuery::FindSimilarConcepts { parameters } => self.find_similar_concepts(parameters).await,
-            AgentQuery::GetDialogHistory { parameters } => self.get_dialog_history(parameters).await,
-            AgentQuery::GetWorkflowStatus { parameters } => self.get_workflow_status(parameters).await,
-            _ => Err(AgentError::InvalidRequest("Unknown query".to_string())),
+    /// Process a generic query
+    pub async fn process_query(&self, query_type: &str, parameters: serde_json::Value) -> Result<serde_json::Value> {
+        match query_type {
+            "list_concepts" => self.list_concepts(parameters).await,
+            "find_similar_concepts" => self.find_similar_concepts(parameters).await,
+            "get_dialog_history" => self.get_dialog_history(parameters).await,
+            "get_workflow_status" => self.get_workflow_status(parameters).await,
+            _ => Err(AgentError::InvalidRequest(format!("Unknown query: {}", query_type))),
         }
     }
     
@@ -142,41 +152,48 @@ impl AlchemistAgent {
         let mut dialogs = self.dialogs.write().await;
         let dialog = dialogs
             .entry(message.dialog_id.clone())
-            .or_insert_with(|| Dialog {
-                id: uuid::Uuid::new_v4(),
-                status: DialogStatus::Active,
-                participants: vec![],
-                turns: vec![],
-                context: serde_json::Value::Object(serde_json::Map::new()),
-                metadata: serde_json::Value::Object(serde_json::Map::new()),
+            .or_insert_with(|| {
+                let participant = cim_domain_dialog::Participant {
+                    id: uuid::Uuid::new_v4(),
+                    name: "User".to_string(),
+                    participant_type: cim_domain_dialog::ParticipantType::Human,
+                    role: cim_domain_dialog::ParticipantRole::Primary,
+                    metadata: HashMap::new(),
+                };
+                Dialog::new(
+                    uuid::Uuid::new_v4(),
+                    cim_domain_dialog::DialogType::Direct,
+                    participant,
+                )
             });
         
         // Add user turn
-        dialog.turns.push(Turn {
-            id: uuid::Uuid::new_v4(),
-            turn_type: TurnType::User,
-            message: Message {
-                content: MessageContent::Text(message.content.clone()),
-                intent: None,
-                metadata: message.metadata.clone(),
-            },
-            timestamp: message.timestamp,
-        });
+        let user_turn = Turn::new(
+            dialog.turns().len() as u32 + 1,
+            dialog.participants().keys().next().copied().unwrap_or_else(uuid::Uuid::new_v4),
+            Message::text(message.content.clone()),
+            cim_domain_dialog::TurnType::UserQuery,
+        );
+        
+        dialog.add_turn(user_turn).ok();
         
         // Build conversation history for model
         let history: Vec<ModelMessage> = dialog
-            .turns
+            .turns()
             .iter()
             .map(|turn| ModelMessage {
-                role: match turn.turn_type {
-                    TurnType::User => "user".to_string(),
-                    TurnType::Assistant => "assistant".to_string(),
-                    TurnType::System => "system".to_string(),
+                role: match turn.metadata.turn_type {
+                    cim_domain_dialog::TurnType::UserQuery => "user".to_string(),
+                    cim_domain_dialog::TurnType::AgentResponse => "assistant".to_string(),
+                    cim_domain_dialog::TurnType::SystemMessage => "system".to_string(),
+                    _ => "user".to_string(),
                 },
                 content: match &turn.message.content {
                     MessageContent::Text(text) => text.clone(),
                     MessageContent::Structured(json) => json.to_string(),
+                    MessageContent::Multimodal { text, .. } => text.clone().unwrap_or_default(),
                 },
+                timestamp: turn.timestamp,
             })
             .collect();
         
@@ -184,6 +201,7 @@ impl AlchemistAgent {
         let mut context = vec![ModelMessage {
             role: "system".to_string(),
             content: self.get_system_prompt(),
+            timestamp: chrono::Utc::now(),
         }];
         context.extend(history);
         
@@ -193,47 +211,44 @@ impl AlchemistAgent {
             .await?;
         
         // Add assistant turn
-        dialog.turns.push(Turn {
-            id: uuid::Uuid::new_v4(),
-            turn_type: TurnType::Assistant,
-            message: Message {
-                content: MessageContent::Text(response.clone()),
-                intent: None,
-                metadata: serde_json::json!({
-                    "model": self.config.model_provider.model_name(),
-                    "agent_id": self.agent.id,
-                }),
-            },
-            timestamp: chrono::Utc::now(),
-        });
+        let assistant_turn = Turn::new(
+            dialog.turns().len() as u32 + 1,
+            self.agent.id(),
+            Message::text(response.clone()),
+            cim_domain_dialog::TurnType::AgentResponse,
+        );
+        
+        dialog.add_turn(assistant_turn).ok();
         
         Ok(response)
     }
     
     /// Start a new dialog
     async fn start_dialog(&self, payload: serde_json::Value) -> Result<serde_json::Value> {
-        let dialog_id = uuid::Uuid::new_v4().to_string();
+        let dialog_id = uuid::Uuid::new_v4();
         
-        let dialog = Dialog {
-            id: uuid::Uuid::new_v4(),
-            status: DialogStatus::Active,
-            participants: vec![
-                self.agent.id.to_string(),
-                payload["user_id"].as_str().unwrap_or("anonymous").to_string(),
-            ],
-            turns: vec![],
-            context: payload["context"].clone(),
-            metadata: payload["metadata"].clone(),
+        let participant = cim_domain_dialog::Participant {
+            id: self.agent.id(),
+            name: "Alchemist".to_string(),
+            participant_type: cim_domain_dialog::ParticipantType::AIAgent,
+            role: cim_domain_dialog::ParticipantRole::Assistant,
+            metadata: HashMap::new(),
         };
         
-        self.dialogs.write().await.insert(dialog_id.clone(), dialog);
+        let dialog = Dialog::new(
+            dialog_id,
+            cim_domain_dialog::DialogType::Direct,
+            participant,
+        );
+        
+        self.dialogs.write().await.insert(dialog_id.to_string(), dialog);
         
         Ok(serde_json::json!({
-            "dialog_id": dialog_id,
+            "dialog_id": dialog_id.to_string(),
             "status": "active",
             "agent": {
-                "id": self.agent.id,
-                "name": self.agent.name,
+                "id": self.agent.id(),
+                "name": "Alchemist",
                 "capabilities": {
                     "explain_concepts": true,
                     "visualize_architecture": true,
@@ -407,14 +422,15 @@ impl AlchemistAgent {
             .ok_or_else(|| AgentError::Domain(format!("Dialog {} not found", dialog_id)))?;
         
         let history: Vec<serde_json::Value> = dialog
-            .turns
+            .turns()
             .iter()
             .map(|turn| {
                 serde_json::json!({
-                    "turn_type": format!("{:?}", turn.turn_type),
+                    "turn_type": format!("{:?}", turn.metadata.turn_type),
                     "content": match &turn.message.content {
                         MessageContent::Text(text) => text.clone(),
                         MessageContent::Structured(json) => json.to_string(),
+                        MessageContent::Multimodal { text, .. } => text.clone().unwrap_or_default(),
                     },
                     "timestamp": turn.timestamp,
                 })
@@ -443,7 +459,7 @@ impl AlchemistAgent {
         Ok(serde_json::json!({
             "workflow_id": workflow_id,
             "status": format!("{:?}", workflow.status),
-            "current_step": workflow.current_node,
+            "current_step": workflow.current_node.clone().unwrap_or_else(|| "none".to_string()),
             "progress": workflow.progress_percentage(),
         }))
     }
@@ -496,7 +512,7 @@ impl AlchemistAgent {
         })
     }
     
-    async fn generate_overview_visualization(&self, _graph: &GraphAggregate) -> Result<serde_json::Value> {
+    async fn generate_overview_visualization(&self, _graph: &Graph) -> Result<serde_json::Value> {
         // Generate overview visualization data
         Ok(serde_json::json!({
             "nodes": [
@@ -511,7 +527,7 @@ impl AlchemistAgent {
         }))
     }
     
-    async fn generate_domain_visualization(&self, _graph: &GraphAggregate) -> Result<serde_json::Value> {
+    async fn generate_domain_visualization(&self, _graph: &Graph) -> Result<serde_json::Value> {
         // Generate domain visualization data
         Ok(serde_json::json!({
             "nodes": [
@@ -527,7 +543,7 @@ impl AlchemistAgent {
         }))
     }
     
-    async fn generate_event_flow_visualization(&self, _graph: &GraphAggregate) -> Result<serde_json::Value> {
+    async fn generate_event_flow_visualization(&self, _graph: &Graph) -> Result<serde_json::Value> {
         // Generate event flow visualization
         Ok(serde_json::json!({
             "nodes": [
@@ -544,7 +560,7 @@ impl AlchemistAgent {
         }))
     }
     
-    async fn generate_custom_visualization(&self, _graph: &GraphAggregate, scope: &str) -> Result<serde_json::Value> {
+    async fn generate_custom_visualization(&self, _graph: &Graph, scope: &str) -> Result<serde_json::Value> {
         Ok(serde_json::json!({
             "error": format!("Custom visualization for '{}' not yet implemented", scope),
         }))
@@ -566,7 +582,7 @@ impl AlchemistAgent {
         Ok(Workflow {
             id: uuid::Uuid::new_v4(),
             name: "Create CIM Agent".to_string(),
-            status: WorkflowStatus::Active,
+            status: WorkflowStatus::Running,
             current_node: Some("setup".to_string()),
             nodes: vec![
                 ("setup".to_string(), serde_json::json!({"step": "Setup project structure"})),
@@ -598,7 +614,7 @@ impl AlchemistAgent {
         Ok(Workflow {
             id: uuid::Uuid::new_v4(),
             name: "Implement CIM Domain".to_string(),
-            status: WorkflowStatus::Active,
+            status: WorkflowStatus::Running,
             current_node: Some("design".to_string()),
             nodes: vec![
                 ("design".to_string(), serde_json::json!({"step": "Design domain model"})),
@@ -630,7 +646,7 @@ impl AlchemistAgent {
         Ok(Workflow {
             id: uuid::Uuid::new_v4(),
             name: "Add Domain Event".to_string(),
-            status: WorkflowStatus::Active,
+            status: WorkflowStatus::Running,
             current_node: Some("define".to_string()),
             nodes: vec![
                 ("define".to_string(), serde_json::json!({"step": "Define event structure"})),
@@ -732,6 +748,18 @@ pub struct DialogMessage {
     pub content: String,
     pub metadata: serde_json::Value,
     pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+// Custom workflow representation for the agent
+#[derive(Debug, Clone)]
+struct Workflow {
+    id: uuid::Uuid,
+    name: String,
+    status: WorkflowStatus,
+    current_node: Option<String>,
+    nodes: HashMap<String, serde_json::Value>,
+    edges: HashMap<(String, String), serde_json::Value>,
+    metadata: serde_json::Value,
 }
 
 impl Workflow {
