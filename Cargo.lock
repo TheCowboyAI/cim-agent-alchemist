@@ -848,7 +848,9 @@ dependencies = [
  "cim-domain",
  "cim-domain-conceptualspaces",
  "serde",
+ "serde_json",
  "thiserror 2.0.12",
+ "tokio",
  "uuid",
 ]
 
@@ -909,12 +911,14 @@ dependencies = [
 name = "cim-subject"
 version = "0.3.0"
 dependencies = [
+ "cim-ipld",
  "dashmap",
  "serde",
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
